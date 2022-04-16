@@ -114,26 +114,12 @@ boolean QueueController::getAutodisconnect() {
 
 void QueueController::printInfo(int i) {
     if (i >= 0 && i < 16) {
-        if (getQueue(i)->hasIP6()) {
-            Serial.printf("#%2i: %39s:%5i - gain: %3f, max_buffers: %2i, "
-                    "prefill: %2i\r\n",
-                    i,
-                    fnet_inet_ntop(AF_INET6, getQueue(i)->getIP6Ptr(),
-                                   ipv6_print_buffer,
-                                   sizeof(ipv6_print_buffer)),
-                    getQueue(i)->getPort(), getGain(i),
-                    getQueue(i)->getMaxBuffers(),
-                    getQueue(i)->getPrefill());
-        } else {
-            Serial.printf("#%2i: %39s:%5i - gain: %3f, max_buffers: %2i, "
-                    "prefill: %2i\r\n",
-                    i,
-                    fnet_inet_ntop(AF_INET, getQueue(i)->getIP4Ptr(),
-                                   ipv6_print_buffer,
-                                   sizeof(ipv6_print_buffer)),
-                    getQueue(i)->getPort(), getGain(i),
-                    getQueue(i)->getMaxBuffers(),
-                    getQueue(i)->getPrefill());
-        }
+        Serial.printf("#%2i: %39s:%5i - gain: %3f, max_buffers: %2i, prefill: %2i\r\n",
+              i,
+              fnet_inet_ntop(getQueue(i)->getSockaddrPtr()->sa_family, &getQueue(i)->getSockaddrPtr()->sa_data, ipv6_print_buffer, sizeof(ipv6_print_buffer)),
+              getQueue(i)->getPort(),
+              getGain(i),
+              getQueue(i)->getMaxBuffers(),
+              getQueue(i)->getPrefill());
     }
 }

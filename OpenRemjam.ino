@@ -1,45 +1,25 @@
-/**
- * OpenRemjam -- ultra-low latency audio streaming solution for Teensy 4.1 
- * 
- * License: MIT
- * 
- * Hardware requirements:
- * - Teensy 4.1
- * - Teensy Audio shield for Teensy 4.x (rev D) (https://www.pjrc.com/store/teensy3_audio.html)
- * - Ethernet Kit for Teensy 4.1 (https://www.pjrc.com/store/ethernet_kit.html)
- * 
- * Software requirements:
- * - Arduino 1.8.19 or newer
- * - Teensyduino 1.56 or newer with installed libraries:
- *   + Audio
- *   + FNET 
- *   + NativeEthernet
- *   + NativeEthernetUdp
- *   + SerialFlash
- *   
- * !!!!!!!!!!!!!! IMPORTANT !!!!!!!!!!!!!!!!!!!!!!!
- * Before you start:
- * - Enable loopback interface: append line "#define FNET_CFG_LOOPBACK (1)" to C:\Program Files (x86)\Arduino\hardware\teensy\avr\libraries\FNET\src\fnet_user_config.h
- * - Patch NetiveEthernet.c: Append line "fnet_netif_set_default(fnet_netif_get_by_name("eth0"));" after existing line "//              Serial.println("SUCCESS: Network Interface is configurated!");" in "C:\Program Files (x86)\Arduino\hardware\teensy\avr\libraries\NativeEthernet\src\NativeEthernet.cpp"
- * - For ultra-low latency: adjust value of AUDIO_BLOCK_SAMPLES from 128 to 16 (line 54 of C:\Program Files (x86)\Arduino\hardware\teensy\avr\cores\teensy4\AudioStream.h)
- * - If you use more than one Teensy on your local network, each one needs a unique (!) MAC address: edit line 37 of this file, before you upload your sketch!
- */
-
 #include <Audio.h>
+#include <EEPROM.h>
+#include <Entropy.h>
 #include <fnet.h>
 #include <NativeEthernet.h>
 #include <NativeEthernetUdp.h>
+#include <CmdParser.hpp>
+#include <CmdBuffer.hpp>
+#include <CmdCallback.hpp>
 #include "NetworkJitterBufferPlayQueue.h"
 #include "QueueController.h"
 
-// Ethernet MAC (use a locally unique one!)
-byte mac[] = {
-  0x00, 0xAA, 0xBB, 0xCC, 0xDE, 0x04
-};
+#define OPENREMJAM_EEPROM_ADDRESS_MAC_LOW (0)                // default: 0
+
+// Command line helpers:
+CmdParser myParser;
+CmdBuffer<32> myBuffer;
+CmdCallback<2> myCallback;
 
 EthernetUDP Udp;
 
-uint8_t recv_buf[OPENREMJAM_MONO_PACKET_SIZE];
+uint8_t recv_buf[2*OPENREMJAM_MONO_PACKET_SIZE];
 uint8_t send_buf[OPENREMJAM_MONO_PACKET_SIZE]; 
 
 // set up audio input:
@@ -52,6 +32,11 @@ AudioConnection input_to_mixer_0(i2s_in, 0, input_mixer, 0);
 AudioConnection input_to_mixer_1(i2s_in, 1, input_mixer, 1);
 AudioConnection mixer_to_rec_queue(input_mixer, rec_queue);
 
+// MAC address:
+byte mac[] = {
+  0x00, 0xAA, 0xBB, 0xCC, 0xDE, 0x02
+};
+
 // qc cares for audio output:
 QueueController qc;
 
@@ -61,13 +46,87 @@ int subindex = 0;
 // seqno is the sequence number of a network block. The receiver uses it for detecting packet loss and reordering.
 uint32_t seqno = 0;
 
+void writeMAC(byte* mac) {
+  if (!mac) return;
+  for (int i = 0; i < 6; ++i) {
+    EEPROM.write(OPENREMJAM_EEPROM_ADDRESS_MAC_LOW+i, mac[i]);
+  }
+}
+
+void generateMAC(byte* mac) {
+  if (!mac) return;
+  for (int i = 0; i < 6; ++i) {
+    mac[i] = Entropy.random(0, 255);
+  }
+  mac[0] &= ~0x01; // clear bit 0
+  mac[0] |= 0x02;  // set bit 1
+}
+
+void getValidMAC(byte* mac) {
+  if (!mac) return;
+  // try to read from EEPROM
+  for (int i = OPENREMJAM_EEPROM_ADDRESS_MAC_LOW; i <= OPENREMJAM_EEPROM_ADDRESS_MAC_LOW + 5; ++i) {
+    mac[i] = EEPROM.read(i);
+  }
+  Serial.printf("MAC from EEPROM: %xu:%xu:%xu:%xu:%xu:%xu\r\n", mac[5], mac[4], mac[3], mac[2], mac[1], mac[0]);
+  
+  // check, if this is a valid MAC address
+  bool valid = true;
+  if (mac[0] & 0x01) valid = false;    // bit 0 is set -- this is a multicast address -> invalid
+  if (!(mac[0] & 0x02)) valid = false; // bit 1 not set -- this is a universally administered
+                                       // addresses (UAA) -> invalid
+  if (!valid) {
+    Serial.println("This one is NOT valid!");
+    generateMAC(mac);
+    writeMAC(mac);
+    Serial.printf("Newly generated and persisted MAC: %xu:%xu:%xu:%xu:%xu:%xu\r\n", mac[5], mac[4], mac[3], mac[2], mac[1], mac[0]);
+  }
+}
+
+void functMAC(CmdParser *myParser) {
+  Serial.println("Setting MAC to: ");
+  String macVal(myParser->getCmdParam(1));
+  macVal.trim();
+  if (macVal.length()!=17) {
+    Serial.println("Error! Check syntax of MAC address. Length must be exactly 17 characters. Valid Example: 00:1E:24:E1:12:02");
+    return;
+  }
+  for (int i=0; i<17; i++) {
+    if ( i == 2 || i == 5 || i == 8 || i == 11 || i == 14) {
+      if (macVal.charAt(i)!= ':' && macVal.charAt(i)!= '-') {
+        Serial.println("Error! Check syntax of MAC address. Seperator must be \'-\' or \':\'. Valid Example: 00:1E:24:E1:12:02");
+        return;
+      } else {
+        macVal.setCharAt(i, '\0'); // create null-termination for strtol
+      }
+    } else {
+      if (!isHexadecimalDigit(macVal.charAt(i))) {
+        Serial.println("Error! Check syntax of MAC address. Allowed characters: 0, ... , 9, a, ... ,f (and \'-\' and ':' as byte separators)");
+        return;
+      }
+    }
+  }
+
+  byte b[6];
+  for (int i=0; i<6; ++i) {
+    b[5-i] = (byte) strtol(macVal.c_str( )+ 3 * i, nullptr, 16);
+    Serial.println(b[5-i]);
+  }
+}
+
+
 void setup() {
+  Entropy.Initialize();
   pinMode(13, OUTPUT); // LED output;
   Serial.begin(9600); // parameter value doesn't matter -- Teensy always uses USB full speed
+
+  myCallback.addCmd("MAC", &functMAC);
+  
   AudioMemory(16 * OPENREMJAM_AUDIO_BLOCKS_PER_NETWORK_BLOCK + 10);    // each of the 16 queues needs up to OPENREMJAM_AUDIO_BLOCKS_PER_NETWORK_BLOCK audio blocks, plus 10 blocks headroom (e.g. for audio input)
   shield.enable();
 
   Serial.println("Initializing Ethernet with DHCP:");
+  //getValidMAC(mac);
   if (Ethernet.begin(mac) == 0) {
     Serial.println("Failed to configure Ethernet using DHCP");
     if (Ethernet.hardwareStatus() == EthernetNoHardware) {
@@ -82,6 +141,7 @@ void setup() {
     }
   }
   Udp.begin(OPENREMJAM_DEFAULT_UDP_PORT);
+
   Serial.print("Ethernet adapter is ready! Local IP address: ");
   Serial.println(Ethernet.localIP());
 
@@ -93,8 +153,9 @@ void setup() {
   qc.getQueue(0)->setIP(IPAddress(127,0,0,1));
   qc.getQueue(0)->setPort(OPENREMJAM_DEFAULT_UDP_PORT);
 
-  qc.getQueue(1)->setIP(IPAddress(192,168,178,34));
-  qc.getQueue(1)->setPort(OPENREMJAM_DEFAULT_UDP_PORT);
+  // Example for remote host:
+  //qc.getQueue(1)->setIP(IPAddress(192,168,178,34));
+  //qc.getQueue(1)->setPort(OPENREMJAM_DEFAULT_UDP_PORT);
 
   // start recording samples:
   rec_queue.begin();
@@ -106,6 +167,7 @@ void setup() {
 }
 
 void loop() {
+    // Serial.println("Main loop");
       // process locally recorded samples
     if (rec_queue.available() > 0) {
         digitalWrite(13, HIGH);
@@ -132,6 +194,7 @@ void loop() {
     digitalWrite(13, LOW);
 
     // receive incomming packets:
+    /*
     if (Udp.parsePacket() == OPENREMJAM_MONO_PACKET_SIZE) {
         // we have received something that looks valid...
 
@@ -154,6 +217,10 @@ void loop() {
             qc.getQueue(qi)->enqueue(recv_buf);
         }
     }
+    */
+    // process cmd line input
+    myCallback.updateCmdProcessing(&myParser, &myBuffer, &Serial);
+    
     // maintain IP configuration using DHCP
     Ethernet.maintain();
 }

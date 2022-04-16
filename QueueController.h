@@ -119,6 +119,22 @@ class QueueController {
     void setAutodisconnect(boolean val);
 
     /**
+     * @brief Disable autoconnect for a queues and disconnect queue
+     * 
+     * @param id queue-id
+     */
+    void disconnect(int id);
+
+    /**
+     * @brief Connect a queue
+     * 
+     * @param id queue-id
+     * @param ip remote IP address
+     * @param port remote port 
+     */
+    void connect(int id, IPAddress ip, int port);
+
+    /**
      * @brief Print status information of a queue
      * 
      * @param i index of queue [0..15]

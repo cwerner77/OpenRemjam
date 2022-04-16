@@ -14,8 +14,8 @@
 
 // Command line helpers:
 CmdParser myParser;
-CmdBuffer<32> myBuffer;
-CmdCallback<2> myCallback;
+CmdBuffer<64> myBuffer;
+CmdCallback<4> myCallback;
 
 EthernetUDP Udp;
 
@@ -33,9 +33,7 @@ AudioConnection input_to_mixer_1(i2s_in, 1, input_mixer, 1);
 AudioConnection mixer_to_rec_queue(input_mixer, rec_queue);
 
 // MAC address:
-byte mac[] = {
-  0x00, 0xAA, 0xBB, 0xCC, 0xDE, 0x02
-};
+byte mac[6];
 
 // qc cares for audio output:
 QueueController qc;
@@ -68,7 +66,7 @@ void getValidMAC(byte* mac) {
   for (int i = OPENREMJAM_EEPROM_ADDRESS_MAC_LOW; i <= OPENREMJAM_EEPROM_ADDRESS_MAC_LOW + 5; ++i) {
     mac[i] = EEPROM.read(i);
   }
-  Serial.printf("MAC from EEPROM: %xu:%xu:%xu:%xu:%xu:%xu\r\n", mac[5], mac[4], mac[3], mac[2], mac[1], mac[0]);
+  Serial.printf("MAC from EEPROM: %x:%x:%x:%x:%x:%x\r\n", mac[5], mac[4], mac[3], mac[2], mac[1], mac[0]);
   
   // check, if this is a valid MAC address
   bool valid = true;
@@ -79,12 +77,49 @@ void getValidMAC(byte* mac) {
     Serial.println("This one is NOT valid!");
     generateMAC(mac);
     writeMAC(mac);
-    Serial.printf("Newly generated and persisted MAC: %xu:%xu:%xu:%xu:%xu:%xu\r\n", mac[5], mac[4], mac[3], mac[2], mac[1], mac[0]);
+    Serial.printf("Newly generated and persisted MAC: %x:%x:%x:%x:%x:%x\r\n", mac[5], mac[4], mac[3], mac[2], mac[1], mac[0]);
+  }
+}
+
+void functConnect(CmdParser *myParser) {
+  String idString(myParser->getCmdParam(1));
+  String ipString(myParser->getCmdParam(2));
+  String portString(myParser->getCmdParam(3));
+
+  int id = idString.toInt();
+  IPAddress ip;
+  int port = portString.toInt();
+  
+  if (id < 0 || id > 15 || !ip.fromString(ipString) || port > 65535 || port < 1) {
+    Serial.println("Syntax: connect <id> <ip> <port>");
+    Serial.println("<id> must be in range 0...15, <ip> must be a valid IPv4 address, port must be in range 1...65535");
+    Serial.println("Example: connect 0 192.168.178.20 9000");
+  } else {
+    qc.connect(id, ip, port);
+    Serial.printf("Queue %d: connected to %2d.%2d.%2d.%2d:%d\r\n", id, ip[0], ip[1], ip[2], ip[3], port);
+  }
+}
+
+void functDisconnect(CmdParser *myParser) {
+  String idString(myParser->getCmdParam(1));
+  int id = idString.toInt();
+  if (id < 0 || id > 15) {
+    Serial.println("Syntax: disconnect <id>");
+    Serial.println("<id> must be in range 0...15");
+    Serial.println("Example: disconnect 0");
+  } else {
+    qc.disconnect(id);
+    Serial.printf("Queue %d: disconnected\r\n", id);
+  }
+}
+
+void functShow(CmdParser *myParser) {
+  for (int i=0; i<16; ++i) {
+    qc.printInfo(i);
   }
 }
 
 void functMAC(CmdParser *myParser) {
-  Serial.println("Setting MAC to: ");
   String macVal(myParser->getCmdParam(1));
   macVal.trim();
   if (macVal.length()!=17) {
@@ -106,12 +141,12 @@ void functMAC(CmdParser *myParser) {
       }
     }
   }
-
   byte b[6];
   for (int i=0; i<6; ++i) {
-    b[5-i] = (byte) strtol(macVal.c_str( )+ 3 * i, nullptr, 16);
-    Serial.println(b[5-i]);
+    b[i]=strtol(macVal.c_str() + 15 - 3*i, nullptr, 16);
   }
+  writeMAC(b);
+  Serial.printf("Persisted MAC: %x:%x:%x:%x:%x:%x -- please power cycle your Teensy now\r\n", b[5], b[4], b[3], b[2], b[1], b[0]);
 }
 
 
@@ -121,12 +156,25 @@ void setup() {
   Serial.begin(9600); // parameter value doesn't matter -- Teensy always uses USB full speed
 
   myCallback.addCmd("MAC", &functMAC);
+  myCallback.addCmd("CONNECT", &functConnect);
+  myCallback.addCmd("DISCONNECT", &functDisconnect);
+  myCallback.addCmd("SHOW", &functShow);
   
   AudioMemory(16 * OPENREMJAM_AUDIO_BLOCKS_PER_NETWORK_BLOCK + 10);    // each of the 16 queues needs up to OPENREMJAM_AUDIO_BLOCKS_PER_NETWORK_BLOCK audio blocks, plus 10 blocks headroom (e.g. for audio input)
   shield.enable();
 
+  Serial.println("OpenRemjam – ultra-low latency audio streaming solution for Teensy 4.1");
+  
+  // print configuration information:
+  Serial.printf("Audio block size: %d samples\r\n", AUDIO_BLOCK_SAMPLES);
+  Serial.printf("Number of audio blocks per datatgram: %d\r\n", OPENREMJAM_AUDIO_BLOCKS_PER_NETWORK_BLOCK);
+  Serial.printf("One network packet corresponds to %d microseconds.\r\n", OPENREMJAM_MONO_PACKET_DURATION_US);
+  if (OPENREMJAM_MONO_PACKET_DURATION_US > 10000) {
+    Serial.println("*** WARNING: Teensy might run out of memory. Consider lower values for AUDIO_BLOCK_SAMPLES or OPENREMJAM_AUDIO_BLOCKS_PER_NETWORK_BLOCK ***");
+  }
+
   Serial.println("Initializing Ethernet with DHCP:");
-  //getValidMAC(mac);
+  getValidMAC(mac);
   if (Ethernet.begin(mac) == 0) {
     Serial.println("Failed to configure Ethernet using DHCP");
     if (Ethernet.hardwareStatus() == EthernetNoHardware) {
@@ -159,16 +207,11 @@ void setup() {
 
   // start recording samples:
   rec_queue.begin();
-
-  // print configuration information:
-  Serial.printf("Audio block size: %d samples\r\n", AUDIO_BLOCK_SAMPLES);
-  Serial.printf("Number of audio blocks per datatgram: %d\r\n", OPENREMJAM_AUDIO_BLOCKS_PER_NETWORK_BLOCK);
-  Serial.printf("One network packet corresponds to %d microseconds.\r\n", OPENREMJAM_MONO_PACKET_DURATION_US);
 }
 
 void loop() {
     // Serial.println("Main loop");
-      // process locally recorded samples
+    // process locally recorded samples
     if (rec_queue.available() > 0) {
         digitalWrite(13, HIGH);
         uint8_t *bufptr = (uint8_t *)rec_queue.readBuffer();
@@ -194,7 +237,6 @@ void loop() {
     digitalWrite(13, LOW);
 
     // receive incomming packets:
-    /*
     if (Udp.parsePacket() == OPENREMJAM_MONO_PACKET_SIZE) {
         // we have received something that looks valid...
 
@@ -208,7 +250,7 @@ void loop() {
                 qc.getQueue(qi)->setIP(Udp.remoteIP());
                 qc.getQueue(qi)->setPort(Udp.remotePort());
             } else {
-                Serial.println("No free autoconnect queues!");
+                //Serial.println("No free autoconnect queues!");
             }
         }
 
@@ -217,7 +259,7 @@ void loop() {
             qc.getQueue(qi)->enqueue(recv_buf);
         }
     }
-    */
+
     // process cmd line input
     myCallback.updateCmdProcessing(&myParser, &myBuffer, &Serial);
     

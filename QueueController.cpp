@@ -112,6 +112,17 @@ boolean QueueController::getAutodisconnect() {
     return autodisconnect;
 }
 
+void QueueController::disconnect(int id) {
+    setAutoconnect(false);
+    getQueue(id)->setPort(0);
+    getQueue(id)->setIP(IPAddress(0,0,0,0));
+}
+
+void QueueController::connect(int id, IPAddress ip, int port) {
+    getQueue(id)->setIP(ip);
+    getQueue(id)->setPort(port);
+}
+
 void QueueController::printInfo(int i) {
     if (i >= 0 && i < 16) {
         Serial.printf("#%2i: %39s:%5i - gain: %3f, max_buffers: %2i, prefill: %2i\r\n",

@@ -1,4 +1,4 @@
-# OpenRemjam -- ultra-low latency audio streaming solution for Teensy 4.1
+# OpenRemjam – ultra-low latency audio streaming solution for Teensy 4.1
 
 ## License
 
@@ -40,13 +40,27 @@ MIT (see LICENSE file)
 
         #define AUDIO_BLOCK_SAMPLES  16
 
-- Setup your remote IP endpoints: edit line 66 ff. of `OpenRemjam.ino`
-- If you use more than one Teensy on your local network, each one needs a unique (!) MAC address: edit line 10 of `OpenRemjam.ino` before you upload your sketch!
 - After uploading your sketch, you should see the LEDs of your Ethernet Kit blinking. After a while, also the orange LED of your Teensy should light up at low intensity. This indicates that your Teensy is sampling audio data.
 - Open the serial monitor to see debug output.
 
-## Planned features
+## Available commands in serial monitor
 
-- Write MAC to EEPROM using serial terminal
-- Read MAC from EEPROM during boot
-- Read IP endpoints from EEPROM for autoconnect after boot
+- Set and persist MAC address
+        
+        Syntax:  MAC <XX:XX:XX:XX:XX:XX> (where XX are 2-digit hex numbers)
+        Example: MAC 5F:CE:AE:8A:16:CE
+
+- Show available queues
+
+        Syntax:  SHOW
+        Example: SHOW
+
+- Connect to a remote host.
+
+        Syntax:  CONNECT <queue-id> <ip> <port> 
+        Example: CONNECT 1 192.168.178.23 9000
+
+- Disconnect a queue. To avoid unintended reconnects due to inconning traffic from the remote host, this also disables the auto-connect feature for all queues!
+
+        Syntax:  DISCONNECT <queue-id>
+        Example: DISCONNECT 1

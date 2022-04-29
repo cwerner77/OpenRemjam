@@ -20,6 +20,9 @@ MIT (see LICENSE file)
     - NativeEthernet
     - NativeEthernetUdp
     - SerialFlash
+
+- External Libraries
+    - CmdParser (https://www.arduino.cc/reference/en/libraries/cmdparser/)
    
 ## Getting started
 
@@ -44,11 +47,6 @@ MIT (see LICENSE file)
 - Open the serial monitor to see debug output.
 
 ## Available commands in serial monitor
-
-- Set and persist MAC address
-        
-        Syntax:  MAC <XX:XX:XX:XX:XX:XX> (where XX are 2-digit hex numbers)
-        Example: MAC 5F:CE:AE:8A:16:CE
 
 - Show available queues
 

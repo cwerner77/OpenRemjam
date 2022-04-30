@@ -10,8 +10,6 @@
 #include "NetworkJitterBufferPlayQueue.h"
 #include "QueueController.h"
 
-#define OPENREMJAM_EEPROM_ADDRESS_MAC_LOW (0)                // default: 0
-
 // Command line helpers:
 CmdParser myParser;
 CmdBuffer<64> myBuffer;
@@ -43,43 +41,6 @@ int subindex = 0;
 
 // seqno is the sequence number of a network block. The receiver uses it for detecting packet loss and reordering.
 uint32_t seqno = 0;
-
-void writeMAC(byte* mac) {
-  if (!mac) return;
-  for (int i = 0; i < 6; ++i) {
-    EEPROM.write(OPENREMJAM_EEPROM_ADDRESS_MAC_LOW+i, mac[i]);
-  }
-}
-
-void generateMAC(byte* mac) {
-  if (!mac) return;
-  for (int i = 0; i < 6; ++i) {
-    mac[i] = Entropy.random(0, 255);
-  }
-  mac[0] &= ~0x01; // clear bit 0
-  mac[0] |= 0x02;  // set bit 1
-}
-
-void getValidMAC(byte* mac) {
-  if (!mac) return;
-  // try to read from EEPROM
-  for (int i = OPENREMJAM_EEPROM_ADDRESS_MAC_LOW; i <= OPENREMJAM_EEPROM_ADDRESS_MAC_LOW + 5; ++i) {
-    mac[i] = EEPROM.read(i);
-  }
-  Serial.printf("MAC from EEPROM: %x:%x:%x:%x:%x:%x\r\n", mac[5], mac[4], mac[3], mac[2], mac[1], mac[0]);
-  
-  // check, if this is a valid MAC address
-  bool valid = true;
-  if (mac[0] & 0x01) valid = false;    // bit 0 is set -- this is a multicast address -> invalid
-  if (!(mac[0] & 0x02)) valid = false; // bit 1 not set -- this is a universally administered
-                                       // addresses (UAA) -> invalid
-  if (!valid) {
-    Serial.println("This one is NOT valid!");
-    generateMAC(mac);
-    writeMAC(mac);
-    Serial.printf("Newly generated and persisted MAC: %x:%x:%x:%x:%x:%x\r\n", mac[5], mac[4], mac[3], mac[2], mac[1], mac[0]);
-  }
-}
 
 void functConnect(CmdParser *myParser) {
   String idString(myParser->getCmdParam(1));
@@ -119,43 +80,22 @@ void functShow(CmdParser *myParser) {
   }
 }
 
-void functMAC(CmdParser *myParser) {
-  String macVal(myParser->getCmdParam(1));
-  macVal.trim();
-  if (macVal.length()!=17) {
-    Serial.println("Error! Check syntax of MAC address. Length must be exactly 17 characters. Valid Example: 00:1E:24:E1:12:02");
-    return;
-  }
-  for (int i=0; i<17; i++) {
-    if ( i == 2 || i == 5 || i == 8 || i == 11 || i == 14) {
-      if (macVal.charAt(i)!= ':' && macVal.charAt(i)!= '-') {
-        Serial.println("Error! Check syntax of MAC address. Seperator must be \'-\' or \':\'. Valid Example: 00:1E:24:E1:12:02");
-        return;
-      } else {
-        macVal.setCharAt(i, '\0'); // create null-termination for strtol
-      }
-    } else {
-      if (!isHexadecimalDigit(macVal.charAt(i))) {
-        Serial.println("Error! Check syntax of MAC address. Allowed characters: 0, ... , 9, a, ... ,f (and \'-\' and ':' as byte separators)");
-        return;
-      }
-    }
-  }
-  byte b[6];
-  for (int i=0; i<6; ++i) {
-    b[i]=strtol(macVal.c_str() + 15 - 3*i, nullptr, 16);
-  }
-  writeMAC(b);
-  Serial.printf("Persisted MAC: %x:%x:%x:%x:%x:%x -- please power cycle your Teensy now\r\n", b[5], b[4], b[3], b[2], b[1], b[0]);
+void enet_getmac(uint8_t *mac) {
+  uint32_t m1 = HW_OCOTP_MAC1;
+  uint32_t m2 = HW_OCOTP_MAC0;
+  mac[0] = m1 >> 8;
+  mac[1] = m1 >> 0;
+  mac[2] = m2 >> 24;
+  mac[3] = m2 >> 16;
+  mac[4] = m2 >> 8;
+  mac[5] = m2 >> 0;
 }
-
 
 void setup() {
   Entropy.Initialize();
   pinMode(13, OUTPUT); // LED output;
   Serial.begin(9600); // parameter value doesn't matter -- Teensy always uses USB full speed
 
-  myCallback.addCmd("MAC", &functMAC);
   myCallback.addCmd("CONNECT", &functConnect);
   myCallback.addCmd("DISCONNECT", &functDisconnect);
   myCallback.addCmd("SHOW", &functShow);
@@ -173,8 +113,10 @@ void setup() {
     Serial.println("*** WARNING: Teensy might run out of memory. Consider lower values for AUDIO_BLOCK_SAMPLES or OPENREMJAM_AUDIO_BLOCKS_PER_NETWORK_BLOCK ***");
   }
 
+  enet_getmac(mac);
+  Serial.printf("MAC = %02x:%02x:%02x:%02x:%02x:%02x\n", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
   Serial.println("Initializing Ethernet with DHCP:");
-  getValidMAC(mac);
+
   if (Ethernet.begin(mac) == 0) {
     Serial.println("Failed to configure Ethernet using DHCP");
     if (Ethernet.hardwareStatus() == EthernetNoHardware) {
@@ -185,9 +127,10 @@ void setup() {
     // no point in carrying on, so do nothing forevermore:
     while (true) {
       Serial.println("Please reboot.");
-      delay(1);
+      while(1);
     }
   }
+
   Udp.begin(OPENREMJAM_DEFAULT_UDP_PORT);
 
   Serial.print("Ethernet adapter is ready! Local IP address: ");
@@ -262,7 +205,7 @@ void loop() {
 
     // process cmd line input
     myCallback.updateCmdProcessing(&myParser, &myBuffer, &Serial);
-    
+
     // maintain IP configuration using DHCP
     Ethernet.maintain();
 }

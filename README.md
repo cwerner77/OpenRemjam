@@ -65,3 +65,14 @@ This work was supported by a research grant from [Ostfalia University of Applied
 
         Syntax:  DISCONNECT <queue-id>
         Example: DISCONNECT 1
+
+## FAQ
+- Q: After several minutes playback stops for approx. 1 second and I receive the following debug output in the serial monitor:
+
+        switchState() -- new state: recovering
+        switchState() -- new state: syncing
+        switchState() -- new state: playing
+
+  What is this?
+  
+  A: This is caused by the phenomenon of drifting sampling clocks, see [UNISON: A Novel System for Ultra-Low Latency Audio Streaming Over the Internet](https://ieeexplore.ieee.org/document/9369466) for details.

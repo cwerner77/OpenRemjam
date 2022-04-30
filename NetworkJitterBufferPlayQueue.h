@@ -1,6 +1,6 @@
 #pragma once
 
-#define OPENREMJAM_AUDIO_BLOCKS_PER_NETWORK_BLOCK (6)     // default: 8 (good choice if AUDIO_BLOCK_SAMPLES has value 16)
+#define OPENREMJAM_AUDIO_BLOCKS_PER_NETWORK_BLOCK (8)     // default: 8 (good choice if AUDIO_BLOCK_SAMPLES has value 16)
 #define OPENREMJAM_PLAY_QUEUE_SIZE (10)                   // default: 10
 #define OPENREMJAM_DEFAULT_UDP_PORT (9000)                // default: 9000
 

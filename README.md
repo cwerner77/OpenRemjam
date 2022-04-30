@@ -4,6 +4,10 @@
 
 MIT (see LICENSE file)
  
+## Acknowledgements
+
+This work was supported by a research grant from [Ostfalia University of Applied Sciences](https://ostfalia.de/en)
+ 
 ## Hardware requirements
 
 - Teensy 4.1
@@ -15,11 +19,9 @@ MIT (see LICENSE file)
 - Arduino 1.8.19 or newer
 - Teensyduino 1.56 or newer with installed libraries:
     - Audio
-    - Entropy
     - FNET 
     - NativeEthernet
     - NativeEthernetUdp
-    - SerialFlash
 
 - External Libraries
     - CmdParser (https://www.arduino.cc/reference/en/libraries/cmdparser/)
@@ -31,7 +33,7 @@ MIT (see LICENSE file)
         #define FNET_CFG_LOOPBACK (1)
 
 - Make NativeEthernet use ETH0 as defaut (instead of loopback interface): in file
-  `C:\Program Files (x86)\Arduino\hardware\teensy\avr\libraries\NativeEthernet\src\NativeEthernet.cpp` after the existing line
+  `C:\Program Files (x86)\Arduino\hardware\teensy\avr\libraries\NativeEthernet\src\NativeEthernet.cpp` after the **first** **occurrence** of this line (as time of writing this line 133)
 
         //              Serial.println("SUCCESS: Network Interface is configurated!");
 

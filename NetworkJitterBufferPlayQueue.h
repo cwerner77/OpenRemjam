@@ -148,7 +148,7 @@ class NetworkJitterBufferPlayQueue : public AudioStream {
      * 
      * @return uint32_t length
      */
-    uint32_t getQueueLength();
+    int32_t getQueueLength();
 
     /**
      * @brief Print statistic information
@@ -213,8 +213,8 @@ class NetworkJitterBufferPlayQueue : public AudioStream {
 
     fnet_sockaddr sa; // port #, IP version, IPv4 or IPv6 address -- this struct has it all :-)
     network_block_t queue[OPENREMJAM_PLAY_QUEUE_MAX_LENGTH];
-    uint32_t max_buffers;         // used number of elements of the queue
-    uint32_t prefill;             // fill prefill blocks before start playing or after underrun
+    int32_t max_buffers;         // used number of elements of the queue
+    int32_t prefill;              // fill prefill blocks before start playing or after underrun
 
     uint32_t free_head;           // this index points to the first free element that can be filled with new data
     uint32_t used_tail;           // this index currently used for playing

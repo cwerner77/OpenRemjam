@@ -67,7 +67,7 @@ uint16_t NetworkJitterBufferPlayQueue::getPort() {
 
 uint32_t NetworkJitterBufferPlayQueue::getCount() { return count; }
 
-uint32_t NetworkJitterBufferPlayQueue::getQueueLength() {
+int32_t NetworkJitterBufferPlayQueue::getQueueLength() {
     // example: free_head 0...5
     //          used_tail 0...5
     //          size      6
@@ -231,7 +231,7 @@ void NetworkJitterBufferPlayQueue::enqueue(uint8_t * buffer) {
     packet->timestamp = micros();
     //Serial.printf("enqued - seqno: %d\r\n",packet->seqno);
 
-    uint32_t seqno_delta = 0;
+    int32_t seqno_delta = 0;
 
     switch (state) {
         case State::stopped:

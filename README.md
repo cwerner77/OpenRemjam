@@ -61,7 +61,7 @@ This work was supported by a research grant from [Ostfalia University of Applied
         Syntax:  CONNECT <queue-id> <ip> <port> 
         Example: CONNECT 1 192.168.178.23 9000
 
-- Disconnect a queue. To avoid unintended reconnects due to inconning traffic from the remote host, this also disables the auto-connect feature for all queues!
+- Disconnect a queue. To avoid unintended reconnects due to incomming traffic from the remote host, this also disables the auto-connect feature for all queues!
 
         Syntax:  DISCONNECT <queue-id>
         Example: DISCONNECT 1
